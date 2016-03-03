@@ -10,6 +10,7 @@ except ImportError:
         ReverseManyRelatedObjectsDescriptor as ManyToManyDescriptor
     )
 from django.db.models import Avg, Count, Sum, Max, Min
+from django.utils.encoding import smart_str
 from openpyxl.workbook import Workbook
 from openpyxl.writer.excel import save_virtual_workbook
 from openpyxl.cell import get_column_letter
@@ -95,7 +96,7 @@ class DataExportMixin(object):
         sh = wb.get_active_sheet()
         c = csv.writer(myfile)
         for r in sh.rows:
-            c.writerow([cell.value for cell in r])
+            c.writerow([smart_str(cell.value) for cell in r])
         response = HttpResponse(
             myfile.getvalue(),
             content_type='text/csv')
@@ -145,7 +146,7 @@ class DataExportMixin(object):
         sh = wb.get_active_sheet()
         c = csv.writer(myfile)
         for r in sh.rows:
-            c.writerow([cell.value for cell in r])
+            c.writerow([smart_str(cell.value) for cell in r])
         return myfile
 
     def list_to_xlsx_response(self, data, title='report', header=None,
