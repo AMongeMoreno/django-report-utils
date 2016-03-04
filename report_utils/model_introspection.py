@@ -7,6 +7,12 @@ import inspect
 def isprop(v):
     return isinstance(v, property)
 
+def is_direct(field):
+    return not field.auto_created or field.concrete
+
+def is_m2m(field):
+    return getattr(field, 'many_to_many', False)
+
 def get_properties_from_model(model_class):
     """ Show properties from a model """
     properties = []
@@ -22,27 +28,22 @@ def get_properties_from_model(model_class):
 def get_relation_fields_from_model(model_class):
     """ Get related fields (m2m, FK, and reverse FK) """
     relation_fields = []
-    all_fields_names = model_class._meta.get_all_field_names()
-    for field_name in all_fields_names:
-        field = model_class._meta.get_field_by_name(field_name)
-        # get_all_field_names will return the same field
-        # both with and without _id. Ignore the duplicate.
-        if field_name[-3:] == '_id' and field_name[:-3] in all_fields_names:
-            continue
-        if field[3] or not field[2] or hasattr(field[0], 'related'):
-            field[0].field_name = field_name
-            relation_fields += [field[0]]
+    all_fields = model_class._meta.get_fields()
+    for field in all_fields:
+        field_name = field.name
+        if is_m2m(field) or not is_direct(field) or hasattr(field, 'related'):
+            field.field_name = field_name
+            relation_fields += [field]
     return relation_fields
 
 
 def get_direct_fields_from_model(model_class):
     """ Direct, not m2m, not FK """
     direct_fields = []
-    all_fields_names = model_class._meta.get_all_field_names()
-    for field_name in all_fields_names:
-        field = model_class._meta.get_field_by_name(field_name)
-        if field[2] and not field[3] and not hasattr(field[0], 'related'):
-            direct_fields += [field[0]]
+    all_fields = model_class._meta.get_fields()
+    for field in all_fields:
+        if is_direct(field) and not is_m2m(field) and not hasattr(field, 'related'):
+            direct_fields += [field]
     return direct_fields
 
 
@@ -68,18 +69,18 @@ def get_model_from_path_string(root_model, path):
     for path_section in path.split('__'):
         if path_section:
             try:
-                field = root_model._meta.get_field_by_name(path_section)
+                field = root_model._meta.get_field(path_section)
             except FieldDoesNotExist:
                 return root_model
-            if field[2]:
-                if hasattr(field[0], 'related'):
+            if is_direct(field):
+                if hasattr(field, 'related'):
                     try:
-                        root_model = field[0].related.parent_model()
+                        root_model = field.related.parent_model()
                     except AttributeError:
-                        root_model = field[0].related.model
+                        root_model = field.related_model
             else:
-                if hasattr(field[0], 'related_model'):
-                    root_model = field[0].related_model
+                if hasattr(field, 'related_model'):
+                    root_model = field.related_model
                 else:
-                    root_model = field[0].model
+                    root_model = field.model
     return root_model

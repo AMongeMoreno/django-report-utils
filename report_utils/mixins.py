@@ -24,6 +24,8 @@ from functools import reduce
 import datetime
 
 from report_utils.model_introspection import (
+    is_direct,
+    is_m2m,
     get_relation_fields_from_model,
     get_properties_from_model,
     get_direct_fields_from_model,
@@ -224,7 +226,7 @@ class DataExportMixin(object):
                     path += '__' # Legacy format to append a __ here.
 
                 new_model = get_model_from_path_string(model_class, path)
-                model_field = new_model._meta.get_field_by_name(field)[0]
+                model_field = new_model._meta.get_field(field)
                 choices = model_field.choices
                 new_display_fields.append(DisplayField(
                     path, '', field, '', '', None, None, choices, ''
@@ -542,29 +544,29 @@ class GetFieldsMixin(object):
         app_label = model_class._meta.app_label
 
         if field_name != '':
-            field = model_class._meta.get_field_by_name(field_name)
+            field = model_class._meta.get_field(field_name)
             if path_verbose:
                 path_verbose += "::"
             # TODO: need actual model name to generate choice list (not pluralized field name)
             # - maybe store this as a separate value?
-            if field[3] and hasattr(field[0], 'm2m_reverse_field_name'):
-                path_verbose += field[0].m2m_reverse_field_name()
+            if is_m2m(field) and hasattr(field, 'm2m_reverse_field_name'):
+                path_verbose += field.m2m_reverse_field_name()
             else:
-                path_verbose += field[0].name
+                path_verbose += field.name
 
             path += field_name
             path += '__'
-            if field[2]:  # Direct field
+            if is_direct(field):  # Direct field
                 try:
-                    new_model = field[0].related.parent_model
+                    new_model = field.related.parent_model
                 except AttributeError:
-                    new_model = field[0].related.model
+                    new_model = field.related_model
                 path_verbose = new_model.__name__.lower()
             else:  # Indirect related field
                 try:
-                    new_model = field[0].related_model
+                    new_model = field.related_model
                 except AttributeError:  # Django 1.7
-                    new_model = field[0].model
+                    new_model = field.model
                 path_verbose = new_model.__name__.lower()
 
             fields = get_direct_fields_from_model(new_model)
@@ -585,23 +587,23 @@ class GetFieldsMixin(object):
     def get_related_fields(self, model_class, field_name, path="", path_verbose=""):
         """ Get fields for a given model """
         if field_name:
-            field = model_class._meta.get_field_by_name(field_name)
-            if field[2]:
+            field = model_class._meta.get_field(field_name)
+            if is_direct(field):
                 # Direct field
                 try:
-                    new_model = field[0].related.parent_model()
+                    new_model = field.related.parent_model()
                 except AttributeError:
-                    new_model = field[0].related.model
+                    new_model = field.related_model
             else:
                 # Indirect related field
-                if hasattr(field[0], 'related_model'):  # Django>=1.8
-                    new_model = field[0].related_model
+                if hasattr(field, 'related_model'):  # Django>=1.8
+                    new_model = field.related_model
                 else:
-                    new_model = field[0].model()
+                    new_model = field.model()
 
             if path_verbose:
                 path_verbose += "::"
-            path_verbose += field[0].name
+            path_verbose += field.name
 
             path += field_name
             path += '__'
@@ -609,6 +611,6 @@ class GetFieldsMixin(object):
             new_model = model_class
 
         new_fields = get_relation_fields_from_model(new_model)
-        model_ct = ContentType.objects.get_for_model(new_model)
+        model_ct = ContentType.objects.get_for_model(new_model, for_concrete_model=False)
 
         return (new_fields, model_ct, path)
